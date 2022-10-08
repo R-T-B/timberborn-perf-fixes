@@ -11,3 +11,7 @@ This mod attempts to fix the stuttering, allowing you to build large colonies of
 This mod is *not well tested* and may cause problems, such as farmers not properly harvesting or planting crops. You must **BACK UP YOUR SAVE** before installing this mod!
 
 If you choose install this, please reach out to me (@Frog#8781) in the modding channel on the [official Timberborn discord](https://discord.com/invite/timberborn). If it's working well, or if you find issues, I'd really appreciate hearing about your experiences!
+
+# Install
+
+Install manually from the [releases page](https://github.com/ToyDragon/timberborn-perf-fixes/releases), or from [thunderstore.io](https://timberborn.thunderstore.io/package/ToyDragon/PerformanceFixes/).
