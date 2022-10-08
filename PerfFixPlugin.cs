@@ -14,17 +14,19 @@ namespace Frog
     public static PerfFixPlugin instance;
     private Harmony harmony;
     public static bool perfFixEnabled = true; // Left in for easy debugging.
+    public static bool constructionFixEnabled = true;
+    public static bool planReserveFixEnabled = true;
+    public static bool popFixEnabled = true;
+    public static bool harvestIsAllowedFixEnabled = true;
+    public static bool gatherGetUnreservedFixEnabled = true;
+    public static bool dwellerAssignFixEnabled = true;
+    public static bool rangedEffectFixEnabled = true;
+    public static bool planterBuildingFixEnabled = true;
+    public static bool tickGameobjectFixEnabled = true;
     private void Awake()
     {
       instance = this;
       harmony = new Harmony("com.frog.perfmod");
-
-      {
-        var mOriginal = AccessTools.Method(typeof(Timberborn.YielderFinding.YielderFinder), "FindLivingYielderWithoutAccessible");
-        var mPrefix = SymbolExtensions.GetMethodInfo((Timberborn.InventorySystem.Inventory receivingInventory, Timberborn.YielderFinding.YielderSearchResult __result) => YielderFinderFindLivingYielderWithoutAccessiblePrefix(receivingInventory, ref __result));
-        var mPostfix = SymbolExtensions.GetMethodInfo((Timberborn.InventorySystem.Inventory receivingInventory, Timberborn.YielderFinding.YielderSearchResult __result) => YielderFinderFindLivingYielderWithoutAccessiblePostfix(receivingInventory, ref __result));
-        harmony.Patch(mOriginal, new HarmonyMethod(mPrefix), new HarmonyMethod(mPostfix));
-      }
 
       {
         var mOriginal = AccessTools.Method(typeof(Timberborn.BuildingsReachability.ConstructionSiteReachabilityStatus), "UpdateStatus");
@@ -96,6 +98,12 @@ namespace Frog
         harmony.Patch(mOriginal, new HarmonyMethod(mPrefix));
       }
 
+      {
+        var mOriginal = AccessTools.Method(typeof(Timberborn.TickSystem.TickableEntity), "Tick");
+        var mPrefix = SymbolExtensions.GetMethodInfo((Timberborn.TickSystem.TickableEntity __instance) => TickableEntityTick(__instance));
+        harmony.Patch(mOriginal, new HarmonyMethod(mPrefix));
+      }
+
       { // EntityRegistration stuff needs to be enabled/disabled all at once, and can't be toggled at runtime.
         {
           var mOriginal = AccessTools.Method(typeof(Timberborn.EntitySystem.EntityRegistry), "AddEntity");
@@ -115,6 +123,28 @@ namespace Frog
       }
     }
 
+    // public void OnGUI() {
+    //   int y = 200;
+    //   int step = 50;
+    //   if (GUI.Button(new Rect(100, y, 400, 50), "constructionFixEnabled: " + (constructionFixEnabled ? "enabled" : "disabled"))) { constructionFixEnabled = !constructionFixEnabled; }
+    //   y+=step;
+    //   if (GUI.Button(new Rect(100, y, 400, 50), "planReserveFixEnabled: " + (planReserveFixEnabled ? "enabled" : "disabled"))) { planReserveFixEnabled = !planReserveFixEnabled; }
+    //   y+=step;
+    //   if (GUI.Button(new Rect(100, y, 400, 50), "popFixEnabled: " + (popFixEnabled ? "enabled" : "disabled"))) { popFixEnabled = !popFixEnabled; }
+    //   y+=step;
+    //   if (GUI.Button(new Rect(100, y, 400, 50), "harvestIsAllowedFixEnabled: " + (harvestIsAllowedFixEnabled ? "enabled" : "disabled"))) { harvestIsAllowedFixEnabled = !harvestIsAllowedFixEnabled; }
+    //   y+=step;
+    //   if (GUI.Button(new Rect(100, y, 400, 50), "gatherGetUnreservedFixEnabled: " + (gatherGetUnreservedFixEnabled ? "enabled" : "disabled"))) { gatherGetUnreservedFixEnabled = !gatherGetUnreservedFixEnabled; }
+    //   y+=step;
+    //   if (GUI.Button(new Rect(100, y, 400, 50), "dwellerAssignFixEnabled: " + (dwellerAssignFixEnabled ? "enabled" : "disabled"))) { dwellerAssignFixEnabled = !dwellerAssignFixEnabled; }
+    //   y+=step;
+    //   if (GUI.Button(new Rect(100, y, 400, 50), "rangedEffectFixEnabled: " + (rangedEffectFixEnabled ? "enabled" : "disabled"))) { rangedEffectFixEnabled = !rangedEffectFixEnabled; }
+    //   y+=step;
+    //   if (GUI.Button(new Rect(100, y, 400, 50), "planterBuildingFixEnabled: " + (planterBuildingFixEnabled ? "enabled" : "disabled"))) { planterBuildingFixEnabled = !planterBuildingFixEnabled; }
+    //   y+=step;
+    //   if (GUI.Button(new Rect(100, y, 400, 50), "tickGameobjectFixEnabled: " + (tickGameobjectFixEnabled ? "enabled" : "disabled"))) { tickGameobjectFixEnabled = !tickGameobjectFixEnabled; }
+    // }
+
     // ========================================================================================================
     // EntityRegistry Removal Optimization
     // ----
@@ -128,13 +158,13 @@ namespace Frog
     //     Entities are now stored in a LinkedList<> (along with a Dict mapping from entity -> LinkedListNode).
     //     They can still be looped over in instantiation order, but they can also be added/removed in O(1).
     // ========================================================================================================
-    private static Dictionary<Timberborn.EntitySystem.EntityRegistry, Dictionary<GameObject, LinkedListNode<GameObject>>> entityRegistryToEntityNodes =
-        new Dictionary<Timberborn.EntitySystem.EntityRegistry, Dictionary<GameObject, LinkedListNode<GameObject>>>();
-    private static Dictionary<GameObject, LinkedListNode<GameObject>> GetEntityNodesFromRegistry(Timberborn.EntitySystem.EntityRegistry registry)
+    private static Dictionary<Timberborn.EntitySystem.EntityRegistry, Dictionary<Guid, LinkedListNode<GameObject>>> entityRegistryToEntityNodes =
+        new Dictionary<Timberborn.EntitySystem.EntityRegistry, Dictionary<Guid, LinkedListNode<GameObject>>>();
+    private static Dictionary<Guid, LinkedListNode<GameObject>> GetEntityNodesFromRegistry(Timberborn.EntitySystem.EntityRegistry registry)
     {
       if (!entityRegistryToEntityNodes.TryGetValue(registry, out var nodes))
       {
-        nodes = entityRegistryToEntityNodes[registry] = new Dictionary<GameObject, LinkedListNode<GameObject>>();
+        nodes = entityRegistryToEntityNodes[registry] = new Dictionary<Guid, LinkedListNode<GameObject>>();
       }
       return nodes;
     }
@@ -154,7 +184,7 @@ namespace Frog
 
       GameObject gameObject = entityComponent.gameObject;
       __instance._entities.Add(entityComponent.EntityId, gameObject);
-      nodes[gameObject] = entitiesInOrder.AddLast(gameObject);
+      nodes[entityComponent.EntityId] = entitiesInOrder.AddLast(gameObject);
       return false;
     }
     public static bool EntityRegistryRemoveEntity(Timberborn.EntitySystem.EntityRegistry __instance, Timberborn.EntitySystem.EntityComponent entityComponent)
@@ -163,9 +193,8 @@ namespace Frog
       var entitiesInOrder = GetOrderedEntitiesFromRegistry(__instance);
 
       __instance._entities.Remove(entityComponent.EntityId);
-      GameObject gameObject = entityComponent.gameObject;
-      entitiesInOrder.Remove(nodes[gameObject]);
-      nodes.Remove(gameObject);
+      entitiesInOrder.Remove(nodes[entityComponent.EntityId]);
+      nodes.Remove(entityComponent.EntityId);
       return false;
     }
     public static bool EntityRegistryget_Entities(Timberborn.EntitySystem.EntityRegistry __instance, ref IEnumerable<GameObject> __result)
@@ -191,7 +220,7 @@ namespace Frog
     private static bool PlanterBuildingStatusUpdaterOnNavMeshUpdated(Timberborn.Planting.PlanterBuildingStatusUpdater __instance, Timberborn.Navigation.NavMeshUpdate navMeshUpdate)
     {
       if (!perfFixEnabled) { return true; }
-
+      if (!planterBuildingFixEnabled) { return true; }
       var startPos = __instance.transform.position;
       var distLimit = ((Timberborn.Navigation.NavigationRangeService)__instance._navigationRangeService)._navigationDistance.ResourceBuildings;
       bool relevantChangeFound = false;
@@ -227,13 +256,13 @@ namespace Frog
     //     laggy functions were identified, copy/pasted, and had GetComponent replaced with GetComponentCached.
     // ========================================================================================================
     private static Dictionary<Type, Dictionary<Component, object>> cachedComponents = new Dictionary<Type, Dictionary<Component, object>>();
-    public static T GetComponentCached<T>(Component c)
+    public static T GetComponentCached<T>(Component c, bool refresh = false)
     {
       if (!cachedComponents.TryGetValue(typeof(T), out var objToCachedOfType))
       {
         objToCachedOfType = cachedComponents[typeof(T)] = new Dictionary<Component, object>();
       }
-      if (!objToCachedOfType.TryGetValue(c, out var result))
+      if (refresh || !objToCachedOfType.TryGetValue(c, out var result))
       {
         result = objToCachedOfType[c] = c.GetComponent<T>();
       }
@@ -242,6 +271,7 @@ namespace Frog
     private static bool RangedEffectReceiverGetAffectingEffects(Timberborn.RangedEffectSystem.RangedEffectReceiver __instance, ref IReadOnlyList<Timberborn.RangedEffectSystem.RangedEffect> __result)
     {
       if (!perfFixEnabled) { return true; }
+      if (!rangedEffectFixEnabled) { return true; }
       __result = __instance._enterer.IsInside ?
           GetComponentCached<Timberborn.RangedEffectSystem.RangedEffectsAffectingEnterable>(__instance._enterer.CurrentBuilding).Effects :
           __instance._rangedEffectService.GetEffectsAffectingCoordinates(Timberborn.Coordinates.CoordinateSystem.WorldToGridInt(__instance.transform.position).XY());
@@ -251,6 +281,7 @@ namespace Frog
     private static bool DwellerHomeAssignerAssignDweller(Timberborn.DwellingSystem.AutoAssignableDwelling dwelling, IEnumerable<Timberborn.Beavers.Beaver> primaryBeavers, IEnumerable<Timberborn.Beavers.Beaver> secondaryBeavers, ref bool __result)
     {
       if (!perfFixEnabled) { return true; }
+      if (!dwellerAssignFixEnabled) { return true; }
 
       foreach (var beaver in primaryBeavers.Concat(secondaryBeavers))
       {
@@ -269,6 +300,7 @@ namespace Frog
     private static bool GatherWorkplaceBehaviorGetUnreservedYielders(Timberborn.Gathering.GatherWorkplaceBehavior __instance, ref IEnumerable<Timberborn.Yielding.Yielder> __result)
     {
       if (!perfFixEnabled) { return true; }
+      if (!gatherGetUnreservedFixEnabled) { return true; }
       __result = __instance._yielderService.UnreservedYielders.Where((yielder => __instance._gathererFlag.CanGather(GetComponentCached<Timberborn.Gathering.Gatherable>(yielder))));
       return false;
     }
@@ -276,6 +308,7 @@ namespace Frog
     private static bool HarvestStarterIsAllowed(Timberborn.Yielding.YieldRemovingBuilding yieldRemovingBuilding, Timberborn.Yielding.Yielder yielder, ref bool __result)
     {
       if (!perfFixEnabled) { return true; }
+      if (!harvestIsAllowedFixEnabled) { return true; }
       __result = yieldRemovingBuilding.IsAllowed(GetComponentCached<Timberborn.Yielding.YielderSpecification>(yielder));
       return false;
     }
@@ -283,6 +316,7 @@ namespace Frog
     private static bool PopulationDataCalculatorCollectWorkforceData(IReadOnlyList<Component> workers, ref Timberborn.Population.WorkforceData __result)
     {
       if (!perfFixEnabled) { return true; }
+      if (!popFixEnabled) { return true; }
       int numberOfEmployable = 0;
       int numberOfUnemployable = 0;
       for (int index = 0; index < workers.Count; ++index)
@@ -302,6 +336,7 @@ namespace Frog
     private static bool PopulationDataCalculatorCollectBedData(int numberOfAdults, int numberOfChildren, IEnumerable<Timberborn.DwellingSystem.Dwelling> dwellings, ref Timberborn.Population.BedData __result)
     {
       if (!perfFixEnabled) { return true; }
+      if (!popFixEnabled) { return true; }
       int numberOfFullBeds = 0;
       int numberOfFreeBeds = 0;
       foreach (Timberborn.DwellingSystem.Dwelling dwelling in dwellings)
@@ -321,6 +356,7 @@ namespace Frog
     private static bool PopulationDataCollectEmploymentMetrics(int numberOfAdults, int numberOfGolems, IEnumerable<Timberborn.WorkSystem.Workplace> workplaces, Timberborn.WorkerTypesUI.WorkerTypeHelper ____workerTypeHelper, ref (Timberborn.Population.WorkplaceData beaverWorkplaceData, Timberborn.Population.WorkplaceData golemWorkplaceData) __result)
     {
       if (!perfFixEnabled) { return true; }
+      if (!popFixEnabled) { return true; }
       int numberOfFullWorkslots1 = 0;
       int numberOfFreeWorkslots1 = 0;
       int numberOfFullWorkslots2 = 0;
@@ -418,6 +454,7 @@ namespace Frog
     private static bool PlantBehaviorReserveCoordinates(Timberborn.Planting.PlantBehavior __instance, GameObject agent, bool prioritized)
     {
       if (!perfFixEnabled) { return true; }
+      if (!planReserveFixEnabled) { return true; }
       if (__instance._planter.PlantingCoordinates.HasValue) { return false; }
 
       Vector3 position = agent.transform.position;
@@ -462,45 +499,44 @@ namespace Frog
     public static bool ConstructionSiteReachabilityStatusUpdateStatusPrefix(Timberborn.BuildingsReachability.ConstructionSiteReachabilityStatus __instance)
     {
       if (!perfFixEnabled) { return true; }
+      if (!constructionFixEnabled) { return true; }
       return UnityEngine.Random.Range(0f, 1f) < 0.01f;
     }
 
     // ========================================================================================================
-    // YielderFinder.FindLivingYielderWithoutAccessible optimizations
+    // TickableEntity.Tick optimizations
     // ----
     //
     // Notes on the original implementation: 
-    //     YielderFinder.FindLivingYielderWithoutAccessible is called all the time, for Farmers looking for crops
-    //     to harvest, and loggers looking for trees to chop. A lot of the time this doesn't cause lag, because
-    //     it's only called once per harvest action. However, if there is nothing available to harvest, then it's
-    //     called every frame and can start really hogging CPU time.
+    //     Similar to the GetComponent issues above, calling the getter for Component.gameObject is expensive.
     //
     // Changes:
-    //     If YielderFinder.FindLivingYielderWithoutAccessible is called and nothing is found in range, then it
-    //     will not try to find another crop/tree to harvest/chop for the next 50 to 100 frames.
+    //     Components are never moved between GameObjects, so the value is cached in a Dictionary. Everything
+    //     else is copy/pasted from the original implementation.
     // ========================================================================================================
-    private static Dictionary<Timberborn.InventorySystem.Inventory, int> inventoryToFindYielderCooldown = new Dictionary<Timberborn.InventorySystem.Inventory, int>();
-    public static bool YielderFinderFindLivingYielderWithoutAccessiblePrefix(Timberborn.InventorySystem.Inventory receivingInventory, ref Timberborn.YielderFinding.YielderSearchResult __result)
+    private static Dictionary<Timberborn.EntitySystem.EntityComponent, GameObject> entityComponentToGameObject = new Dictionary<Timberborn.EntitySystem.EntityComponent, GameObject>();
+    public static bool TickableEntityTick(Timberborn.TickSystem.TickableEntity __instance)
     {
       if (!perfFixEnabled) { return true; }
-      if (inventoryToFindYielderCooldown.TryGetValue(receivingInventory, out int remainingdowntime))
+      if (!tickGameobjectFixEnabled) { return true; }
+      try
       {
-        if (remainingdowntime > 0)
+        if (!entityComponentToGameObject.TryGetValue(__instance._entityComponent, out var gameObject))
         {
-          inventoryToFindYielderCooldown[receivingInventory] = remainingdowntime - 1;
-          __result = Timberborn.YielderFinding.YielderSearchResult.CreateEmpty();
+          gameObject = entityComponentToGameObject[__instance._entityComponent] = __instance._entityComponent.gameObject;
+        }
+        if (!gameObject.activeInHierarchy)
+        {
           return false;
         }
+        __instance.TickTickableComponents();
       }
-      return true;
-    }
-    public static void YielderFinderFindLivingYielderWithoutAccessiblePostfix(Timberborn.InventorySystem.Inventory receivingInventory, ref Timberborn.YielderFinding.YielderSearchResult __result)
-    {
-      if (!perfFixEnabled) { return; }
-      if (__result.Yielder == null)
+      catch (Exception ex)
       {
-        inventoryToFindYielderCooldown[receivingInventory] = UnityEngine.Random.RandomRangeInt(50, 100);
+        string str = string.Format("Exception thrown while ticking entity {0}", (object)__instance.EntityId);
+        throw new Exception(!(bool)(UnityEngine.Object)__instance._entityComponent ? str + " '" + __instance._originalName + "' (destroyed)" : str + " '" + __instance._entityComponent.name + "'", ex);
       }
+      return false;
     }
   }
 }
