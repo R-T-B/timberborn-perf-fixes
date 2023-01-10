@@ -1,9 +1,0 @@
-{
-  "name": "PerformanceFixes",
-  "version_number": "1.0.2",
-  "website_url": "https://github.com/ToyDragon/timberborn-perf-fixes/tree/main",
-  "description": "Fixes issues causing stuttering and dropped inputs, allowing you to build large colonies of thousands of beavers.",
-  "dependencies": [
-      "BepInEx-BepInExPack_Timberborn-5.4.19"
-  ]
-}
