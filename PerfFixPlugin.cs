@@ -8,7 +8,7 @@ using Timberborn.Common;
 
 namespace Frog
 {
-  [BepInPlugin("com.frog.perfmod", "Performance Fixes", "1.0.0.0")]
+  [BepInPlugin("com.frog.perfmod", "Performance Fixes", "1.0.5.0")]
   public class PerfFixPlugin : BaseUnityPlugin
   {
     public static PerfFixPlugin instance;
@@ -29,9 +29,9 @@ namespace Frog
       harmony = new Harmony("com.frog.perfmod");
 
       {
-        var mOriginal = AccessTools.Method(typeof(Timberborn.BuildingsReachability.ConstructionSiteReachabilityStatus), "UpdateStatus");
-        var mPrefix = SymbolExtensions.GetMethodInfo((Timberborn.BuildingsReachability.ConstructionSiteReachabilityStatus __instance) =>
-            ConstructionSiteReachabilityStatusUpdateStatusPrefix(__instance));
+        var mOriginal = AccessTools.Method(typeof(Timberborn.BuildingsReachability.UnreachableBuildingStatus), "UpdateStatus");
+        var mPrefix = SymbolExtensions.GetMethodInfo((Timberborn.BuildingsReachability.UnreachableBuildingStatus __instance) =>
+            UnreachableBuildingStatusUpdateStatusPrefix(__instance));
         harmony.Patch(mOriginal, new HarmonyMethod(mPrefix));
       }
 
@@ -51,8 +51,8 @@ namespace Frog
 
       {
         var mOriginal = AccessTools.Method(typeof(Timberborn.Population.PopulationDataCalculator), "CollectEmploymentMetrics");
-        var mPrefix = SymbolExtensions.GetMethodInfo((int numberOfAdults, int numberOfGolems, IEnumerable<Timberborn.WorkSystem.Workplace> workplaces, Timberborn.WorkerTypesUI.WorkerTypeHelper ____workerTypeHelper, (Timberborn.Population.WorkplaceData beaverWorkplaceData, Timberborn.Population.WorkplaceData golemWorkplaceData) __result) =>
-            PopulationDataCollectEmploymentMetrics(numberOfAdults, numberOfGolems, workplaces, ____workerTypeHelper, ref __result));
+        var mPrefix = SymbolExtensions.GetMethodInfo((int numberOfAdults, int numberOfBots, IEnumerable<Timberborn.WorkSystem.Workplace> workplaces, Timberborn.WorkerTypesUI.WorkerTypeHelper ____workerTypeHelper, (Timberborn.Population.WorkplaceData beaverWorkplaceData, Timberborn.Population.WorkplaceData golemWorkplaceData) __result) =>
+            PopulationDataCollectEmploymentMetrics(numberOfAdults, numberOfBots, workplaces, ____workerTypeHelper, ref __result));
         harmony.Patch(mOriginal, new HarmonyMethod(mPrefix));
       }
 
@@ -353,7 +353,7 @@ namespace Frog
       __result = new Timberborn.Population.BedData(numberOfFullBeds, numberOfFreeBeds, numberOfHomeless);
       return false;
     }
-    private static bool PopulationDataCollectEmploymentMetrics(int numberOfAdults, int numberOfGolems, IEnumerable<Timberborn.WorkSystem.Workplace> workplaces, Timberborn.WorkerTypesUI.WorkerTypeHelper ____workerTypeHelper, ref (Timberborn.Population.WorkplaceData beaverWorkplaceData, Timberborn.Population.WorkplaceData golemWorkplaceData) __result)
+    private static bool PopulationDataCollectEmploymentMetrics(int numberOfAdults, int numberOfBots, IEnumerable<Timberborn.WorkSystem.Workplace> workplaces, Timberborn.WorkerTypesUI.WorkerTypeHelper ____workerTypeHelper, ref (Timberborn.Population.WorkplaceData beaverWorkplaceData, Timberborn.Population.WorkplaceData golemWorkplaceData) __result)
     {
       if (!perfFixEnabled) { return true; }
       if (!popFixEnabled) { return true; }
@@ -382,7 +382,7 @@ namespace Frog
         }
       }
       int numberOfUnemployed1 = numberOfAdults - numberOfFullWorkslots1;
-      int numberOfUnemployed2 = numberOfGolems - numberOfFullWorkslots2;
+      int numberOfUnemployed2 = numberOfBots - numberOfFullWorkslots2;
       __result = (new Timberborn.Population.WorkplaceData(numberOfFullWorkslots1, numberOfFreeWorkslots1, numberOfUnemployed1), new Timberborn.Population.WorkplaceData(numberOfFullWorkslots2, numberOfFreeWorkslots2, numberOfUnemployed2));
       return false;
     }
@@ -485,7 +485,7 @@ namespace Frog
     }
 
     // ========================================================================================================
-    // ConstructionSiteReachabilityStatus.UpdateStatus optimizations
+    // UnreachableBuildingStatus.UpdateStatus optimizations
     // ----
     //
     // Notes on the original implementation: 
@@ -496,7 +496,7 @@ namespace Frog
     //     The function skips it's expensive logic 99% of the time. This means there's up to a 5 second delay
     //     for the status icons to update, but significantly less lag.
     // ========================================================================================================
-    public static bool ConstructionSiteReachabilityStatusUpdateStatusPrefix(Timberborn.BuildingsReachability.ConstructionSiteReachabilityStatus __instance)
+    public static bool UnreachableBuildingStatusUpdateStatusPrefix(Timberborn.BuildingsReachability.UnreachableBuildingStatus __instance)
     {
       if (!perfFixEnabled) { return true; }
       if (!constructionFixEnabled) { return true; }
