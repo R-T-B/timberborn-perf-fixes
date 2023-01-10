@@ -14,7 +14,6 @@ namespace Frog
     public static PerfFixPlugin instance;
     private Harmony harmony;
     public static bool perfFixEnabled = true; // Left in for easy debugging.
-    public static bool constructionFixEnabled = true;
     public static bool planReserveFixEnabled = true;
     public static bool popFixEnabled = true;
     public static bool harvestIsAllowedFixEnabled = true;
@@ -27,13 +26,6 @@ namespace Frog
     {
       instance = this;
       harmony = new Harmony("com.frog.perfmod");
-
-      {
-        var mOriginal = AccessTools.Method(typeof(Timberborn.BuildingsReachability.UnreachableBuildingStatus), "UpdateStatus");
-        var mPrefix = SymbolExtensions.GetMethodInfo((Timberborn.BuildingsReachability.UnreachableBuildingStatus __instance) =>
-            UnreachableBuildingStatusUpdateStatusPrefix(__instance));
-        harmony.Patch(mOriginal, new HarmonyMethod(mPrefix));
-      }
 
       {
         var mOriginal = AccessTools.Method(typeof(Timberborn.Population.PopulationDataCalculator), "CollectWorkforceData");
@@ -482,25 +474,6 @@ namespace Frog
       }
       __instance._planter.Reserve(result.Value);
       return false;
-    }
-
-    // ========================================================================================================
-    // UnreachableBuildingStatus.UpdateStatus optimizations
-    // ----
-    //
-    // Notes on the original implementation: 
-    //     It makes sense that this function is slow to run, it has to check the flow fields for valid paths
-    //     and stuff. But it's silly to call this every frame for every building under construction.
-    //
-    // Changes:
-    //     The function skips it's expensive logic 99% of the time. This means there's up to a 5 second delay
-    //     for the status icons to update, but significantly less lag.
-    // ========================================================================================================
-    public static bool UnreachableBuildingStatusUpdateStatusPrefix(Timberborn.BuildingsReachability.UnreachableBuildingStatus __instance)
-    {
-      if (!perfFixEnabled) { return true; }
-      if (!constructionFixEnabled) { return true; }
-      return UnityEngine.Random.Range(0f, 1f) < 0.01f;
     }
 
     // ========================================================================================================
