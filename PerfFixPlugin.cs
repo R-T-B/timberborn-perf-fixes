@@ -31,6 +31,7 @@ namespace Frog
         {
             instance = this;
             Logger = consoleWriter;
+            Patcher.DoPatching();
             
         }
 
