@@ -24,7 +24,6 @@ namespace Frog
         public static bool gatherGetUnreservedFixEnabled = true;
         public static bool dwellerAssignFixEnabled = true;
         public static bool rangedEffectFixEnabled = true;
-        public static bool planterBuildingFixEnabled = true;
         public static bool tickGameobjectFixEnabled = true;
         public static IConsoleWriter Logger;
         public void Entry(IMod mod, IConsoleWriter consoleWriter)
@@ -112,44 +111,6 @@ namespace Frog
         public static bool EntityRegistryget_Entities(Timberborn.EntitySystem.EntityRegistry __instance, ref IEnumerable<GameObject> __result)
         {
             __result = GetOrderedEntitiesFromRegistry(__instance);
-            return false;
-        }
-
-        // ========================================================================================================
-        // PlanterBuildingStatusUpdater.OnNavMeshUpdated optimization
-        // ----
-        //
-        // Notes on the original implementation: 
-        //     The original implementation causes all planter buildings to update their status any time the NavMesh
-        //     changes at all, which is very expensive as it involves getting a list of all tiles within range of
-        //     the building.
-        //
-        // Changes:
-        //     The status is now only updated if the NavMesh change was close enough to the planter to possibly
-        //     cause changes. Any changes further away than the `_navigationDistance.ResourceBuildings` limit
-        //     can't possibly cause changes the list of nearby tiles, so they're ignored.
-        // ========================================================================================================
-        public static bool PlanterBuildingStatusUpdaterOnNavMeshUpdated(Timberborn.Planting.PlanterBuildingStatusUpdater __instance, Timberborn.Navigation.NavMeshUpdate navMeshUpdate)
-        {
-            if (!perfFixEnabled) { return true; }
-            if (!planterBuildingFixEnabled) { return true; }
-            var startPos = __instance.transform.position;
-            var distLimit = ((Timberborn.Navigation.NavigationRangeService)__instance._navigationRangeService)._navigationDistance.ResourceBuildings;
-            bool relevantChangeFound = false;
-            foreach (var changeLoc in navMeshUpdate.TerrainCoordinates)
-            {
-                if (Vector3.Distance(changeLoc, startPos) < distLimit)
-                {
-                    relevantChangeFound = true;
-                    break;
-                }
-            }
-
-            if (relevantChangeFound)
-            {
-                __instance._shouldUpdateStatus = true;
-                __instance._shouldUpdateRange = true;
-            }
             return false;
         }
 
@@ -463,13 +424,6 @@ namespace Frog
                 var mOriginal = AccessTools.Method(typeof(Timberborn.Planting.PlantBehavior), "ReserveCoordinates");
                 var mPrefix = SymbolExtensions.GetMethodInfo((Timberborn.Planting.PlantBehavior __instance, GameObject agent, bool prioritized) =>
                     PerfFixPlugin.PlantBehaviorReserveCoordinates(__instance, agent, prioritized));
-                PerfFixPlugin.instance.harmony.Patch(mOriginal, new HarmonyMethod(mPrefix));
-            }
-
-            {
-                var mOriginal = AccessTools.Method(typeof(Timberborn.Planting.PlanterBuildingStatusUpdater), "OnNavMeshUpdated");
-                var mPrefix = SymbolExtensions.GetMethodInfo((Timberborn.Planting.PlanterBuildingStatusUpdater __instance, Timberborn.Navigation.NavMeshUpdate navMeshUpdate) =>
-                    PerfFixPlugin.PlanterBuildingStatusUpdaterOnNavMeshUpdated(__instance, navMeshUpdate));
                 PerfFixPlugin.instance.harmony.Patch(mOriginal, new HarmonyMethod(mPrefix));
             }
 
