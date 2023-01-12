@@ -20,7 +20,6 @@ namespace Frog
         public static bool perfFixEnabled = true; // Left in for easy debugging.
         public static bool planReserveFixEnabled = true;
         public static bool popFixEnabled = true;
-        public static bool harvestIsAllowedFixEnabled = true;
         public static bool gatherGetUnreservedFixEnabled = true;
         public static bool dwellerAssignFixEnabled = true;
         public static bool rangedEffectFixEnabled = true;
@@ -175,14 +174,6 @@ namespace Frog
             if (!perfFixEnabled) { return true; }
             if (!gatherGetUnreservedFixEnabled) { return true; }
             __result = __instance._yielderService.UnreservedYielders.Where((yielder => __instance._gathererFlag.CanGather(GetComponentCached<Timberborn.Gathering.Gatherable>(yielder))));
-            return false;
-        }
-
-        public static bool HarvestStarterIsAllowed(Timberborn.Yielding.YieldRemovingBuilding yieldRemovingBuilding, Timberborn.Yielding.Yielder yielder, ref bool __result)
-        {
-            if (!perfFixEnabled) { return true; }
-            if (!harvestIsAllowedFixEnabled) { return true; }
-            __result = yieldRemovingBuilding.IsAllowed(GetComponentCached<Timberborn.Yielding.YielderSpecification>(yielder));
             return false;
         }
 
@@ -424,13 +415,6 @@ namespace Frog
                 var mOriginal = AccessTools.Method(typeof(Timberborn.Planting.PlantBehavior), "ReserveCoordinates");
                 var mPrefix = SymbolExtensions.GetMethodInfo((Timberborn.Planting.PlantBehavior __instance, GameObject agent, bool prioritized) =>
                     PerfFixPlugin.PlantBehaviorReserveCoordinates(__instance, agent, prioritized));
-                PerfFixPlugin.instance.harmony.Patch(mOriginal, new HarmonyMethod(mPrefix));
-            }
-
-            {
-                var mOriginal = AccessTools.Method(typeof(Timberborn.Fields.HarvestStarter), "IsAllowed");
-                var mPrefix = SymbolExtensions.GetMethodInfo((Timberborn.Yielding.YieldRemovingBuilding yieldRemovingBuilding, Timberborn.Yielding.Yielder yielder, bool __result) =>
-                    PerfFixPlugin.HarvestStarterIsAllowed(yieldRemovingBuilding, yielder, ref __result));
                 PerfFixPlugin.instance.harmony.Patch(mOriginal, new HarmonyMethod(mPrefix));
             }
 
