@@ -10,6 +10,7 @@ using Timberborn.MapSystemUI;
 using TimberApi.ConsoleSystem;
 using HarmonyLib;
 using TimberApi.ModSystem;
+using Timberborn.Planting;
 
 namespace Frog
 {
@@ -20,9 +21,11 @@ namespace Frog
         public static bool perfFixEnabled = true; // Left in for easy debugging.
         public static bool planReserveFixEnabled = true;
         public static bool popFixEnabled = true;
+        public static bool harvestIsAllowedFixEnabled = true;
         public static bool gatherGetUnreservedFixEnabled = true;
         public static bool dwellerAssignFixEnabled = true;
         public static bool rangedEffectFixEnabled = true;
+        public static bool planterBuildingFixEnabled = true;
         public static bool tickGameobjectFixEnabled = true;
         public static IConsoleWriter Logger;
         public void Entry(IMod mod, IConsoleWriter consoleWriter)
@@ -30,7 +33,7 @@ namespace Frog
             instance = this;
             Logger = consoleWriter;
             Patcher.DoPatching();
-            
+
         }
 
         // public void OnGUI() {
@@ -112,6 +115,44 @@ namespace Frog
             __result = GetOrderedEntitiesFromRegistry(__instance);
             return false;
         }
+        // ========================================================================================================
+        // PlanterBuildingStatusUpdater.OnNavMeshUpdated optimization
+        // ----
+        //
+        // Notes on the original implementation: 
+        //     The original implementation causes all planter buildings to update their status any time the NavMesh
+        //     changes at all, which is very expensive as it involves getting a list of all tiles within range of
+        //     the building.
+        //
+        // Changes:
+        //     The status is now only updated if the NavMesh change was close enough to the planter to possibly
+        //     cause changes. Any changes further away than the `_navigationDistance.ResourceBuildings` limit
+        //     can't possibly cause changes the list of nearby tiles, so they're ignored.  It is also updated on 
+        //     a random 30 frame timer to ensure it starts properly.
+        // ========================================================================================================
+        public static bool PlanterBuildingStatusUpdaterOnNavMeshUpdated(Timberborn.Planting.PlanterBuildingStatusUpdater __instance, Timberborn.Navigation.NavMeshUpdate navMeshUpdate)
+        {
+            if (!perfFixEnabled) { return true; }
+            if (!planterBuildingFixEnabled) { return true; }
+            var startPos = __instance.transform.position;
+            var distLimit = ((Timberborn.Navigation.NavigationRangeService)__instance._navigationRangeService)._navigationDistance.ResourceBuildings;
+            bool relevantChangeFound = false;
+            foreach (var changeLoc in navMeshUpdate.TerrainCoordinates)
+            {
+                if ((Vector3.Distance(changeLoc, startPos) < distLimit) || (UnityEngine.Random.Range(0, 30) == 1))
+                {
+                    relevantChangeFound = true;
+                    break;
+                }
+            }
+
+            if (relevantChangeFound)
+            {
+                __instance._shouldUpdateStatus = true;
+                __instance._shouldUpdateRange = true;
+            }
+            return false;
+        }
 
         // ========================================================================================================
         // GetComponent<> optimizations
@@ -174,6 +215,14 @@ namespace Frog
             if (!perfFixEnabled) { return true; }
             if (!gatherGetUnreservedFixEnabled) { return true; }
             __result = __instance._yielderService.UnreservedYielders.Where((yielder => __instance._gathererFlag.CanGather(GetComponentCached<Timberborn.Gathering.Gatherable>(yielder))));
+            return false;
+        }
+
+        public static bool HarvestStarterIsAllowed(Timberborn.Yielding.YieldRemovingBuilding yieldRemovingBuilding, Timberborn.Yielding.Yielder yielder, ref bool __result)
+        {
+            if (!perfFixEnabled) { return true; }
+            if (!harvestIsAllowedFixEnabled) { return true; }
+            __result = yieldRemovingBuilding.IsAllowed(GetComponentCached<Timberborn.Yielding.YielderSpecification>(yielder));
             return false;
         }
 
@@ -250,104 +299,6 @@ namespace Frog
             __result = (new Timberborn.Population.WorkplaceData(numberOfFullWorkslots1, numberOfFreeWorkslots1, numberOfUnemployed1), new Timberborn.Population.WorkplaceData(numberOfFullWorkslots2, numberOfFreeWorkslots2, numberOfUnemployed2));
             return false;
         }
-
-        // ========================================================================================================
-        // PlantBehavior.ReserveCoordinates optimization
-        // ----
-        //
-        // Notes on the original implementation: 
-        //     Every frame that a spot isn't already reserved, PlantingCoordinatesFinder.FindClosestAllowed is
-        //     called. This means when farmers are idle at a farmhouse with no empty spots to plant in, this is
-        //     firing EVERY frame for each idling farmer. This is incredibly expensive because
-        //     PlantingCoordinatesFinder.GetReachable loops over every plantable spot on the whole map to find
-        //     the nearest spot. Even with cached paths in the NavigationService, this scales at
-        //     O(NumFarmers * NumTilesOnTheMap) which is nutty slow.
-        //
-        // Changes:
-        //     The whole approach is changed here. Now all tiles are within range of each farmhouse are retrieved
-        //     and cached, and only updated every ~100 frames. During caching the tiles are sorted by distance, so
-        //     retreival of the closest tiles can be found quickly.
-        //     Notably, this chooses plant spots based on their distance to the farmhouse, not distance to the
-        //     accessible door. This is weird, but it's how the vanilla function works and it's a lot faster to
-        //     calculate, so it's been preserved.
-        // ========================================================================================================
-        public static bool CanPlantAtIgnoreTerrain(Timberborn.Planting.PlantingCoordinatesFinder finder, Vector3Int coordinates, string plantingSpotPrefabName, Timberborn.Planting.Plantable prioritizedPlantable)
-        {
-            return finder._soilMoistureService.SoilIsMoist(coordinates.XY()) && finder._waterNaturalResourceService.ConditionsAreMet(plantingSpotPrefabName, coordinates) && (prioritizedPlantable ? (plantingSpotPrefabName == prioritizedPlantable.PrefabName ? 1 : 0) : (finder._planterBuilding.CanPlant(plantingSpotPrefabName) ? 1 : 0)) != 0;
-        }
-        private static Dictionary<Timberborn.Planting.PlantBehavior, List<Vector3Int>> behaviorToSortedSpots = new Dictionary<Timberborn.Planting.PlantBehavior, List<Vector3Int>>();
-        private static Vector3Int? GetClosestSpotForPlantBehavior(Timberborn.Planting.PlantBehavior behavior, Timberborn.Planting.Plantable prioritizedPlantable)
-        {
-            var plantCoordsFinder = behavior._worker.Workplace.GetComponent<Timberborn.Planting.PlantingCoordinatesFinder>();
-
-            // Update the sorted list of nearby plantable spots.
-            if (!behaviorToSortedSpots.TryGetValue(behavior, out var sortedSpots)
-              || UnityEngine.Random.Range(0f, 1f) < .01f) // Invalidate the cache every ~100 frames
-            {
-                sortedSpots = behaviorToSortedSpots[behavior] = new List<Vector3Int>();
-                foreach (var spot in behavior._plantingService._plantingSpots.Keys.Concat(behavior._plantingService._reservedCoordinates))
-                {
-                    if (plantCoordsFinder._accessible.IsReachableByTerrain(Timberborn.Coordinates.CoordinateSystem.GridToWorldCentered(spot)))
-                    {
-                        sortedSpots.Add(spot);
-                    }
-                }
-                var blockCenter = plantCoordsFinder._blockObjectCenter.WorldCenterGrounded;
-                sortedSpots.Sort((a, b) =>
-                {
-                    var distA = Vector3.Distance(blockCenter, Timberborn.Coordinates.CoordinateSystem.GridToWorldCentered(a));
-                    var distB = Vector3.Distance(blockCenter, Timberborn.Coordinates.CoordinateSystem.GridToWorldCentered(b));
-                    return distA > distB ? 1 : distA < distB ? -1 : 0;
-                });
-            }
-
-            // Find the nearest plantable spot that meets all required criteria.
-            Vector3Int? result = null;
-            foreach (var spot in sortedSpots)
-            {
-                if (plantCoordsFinder._plantingService._reservedCoordinates.Contains(spot)) { continue; }
-                string resourceAt = plantCoordsFinder._plantingService.GetResourceAt(spot.XY());
-                if (resourceAt == null) { continue; }
-                if (!CanPlantAtIgnoreTerrain(plantCoordsFinder, spot, resourceAt, prioritizedPlantable)) { continue; }
-                if (!plantCoordsFinder._spawnValidator.IsUnobstructed(spot, resourceAt)) { continue; }
-                result = spot;
-                break;
-            }
-            return result;
-        }
-        public static bool PlantBehaviorReserveCoordinates(Timberborn.Planting.PlantBehavior __instance, GameObject agent, bool prioritized)
-        {
-            if (!perfFixEnabled) { return true; }
-            if (!planReserveFixEnabled) { return true; }
-            if (__instance._planter.PlantingCoordinates.HasValue) { return false; }
-
-            Vector3 position = agent.transform.position;
-            Vector3Int? result = null;
-            if (prioritized)
-            {
-                var prioritizer = __instance.GetComponent<Timberborn.Planting.PlantablePrioritizer>();
-                if (prioritizer)
-                {
-                    var plantCoordsFinder = __instance._worker.Workplace.GetComponent<Timberborn.Planting.PlantingCoordinatesFinder>();
-                    result = plantCoordsFinder.GetClosestOrDefault(plantCoordsFinder.GetNeighboring(agent.transform.position, prioritizer.PrioritizedPlantable));
-                    if (!result.HasValue)
-                    {
-                        result = GetClosestSpotForPlantBehavior(__instance, prioritizer.PrioritizedPlantable);
-                    }
-                }
-            }
-            else
-            {
-                result = GetClosestSpotForPlantBehavior(__instance, null);
-            }
-            if (!result.HasValue)
-            {
-                return false;
-            }
-            __instance._planter.Reserve(result.Value);
-            return false;
-        }
-
         // ========================================================================================================
         // TickableEntity.Tick optimizations
         // ----
@@ -412,9 +363,16 @@ namespace Frog
             }
 
             {
-                var mOriginal = AccessTools.Method(typeof(Timberborn.Planting.PlantBehavior), "ReserveCoordinates");
-                var mPrefix = SymbolExtensions.GetMethodInfo((Timberborn.Planting.PlantBehavior __instance, GameObject agent, bool prioritized) =>
-                    PerfFixPlugin.PlantBehaviorReserveCoordinates(__instance, agent, prioritized));
+                var mOriginal = AccessTools.Method(typeof(Timberborn.Planting.PlanterBuildingStatusUpdater), "OnNavMeshUpdated");
+                var mPrefix = SymbolExtensions.GetMethodInfo((Timberborn.Planting.PlanterBuildingStatusUpdater __instance, Timberborn.Navigation.NavMeshUpdate navMeshUpdate) =>
+                    PerfFixPlugin.PlanterBuildingStatusUpdaterOnNavMeshUpdated(__instance, navMeshUpdate));
+                PerfFixPlugin.instance.harmony.Patch(mOriginal, new HarmonyMethod(mPrefix));
+            }
+
+            {
+                var mOriginal = AccessTools.Method(typeof(Timberborn.Fields.HarvestStarter), "IsAllowed");
+                var mPrefix = SymbolExtensions.GetMethodInfo((Timberborn.Yielding.YieldRemovingBuilding yieldRemovingBuilding, Timberborn.Yielding.Yielder yielder, bool __result) =>
+                    PerfFixPlugin.HarvestStarterIsAllowed(yieldRemovingBuilding, yielder, ref __result));
                 PerfFixPlugin.instance.harmony.Patch(mOriginal, new HarmonyMethod(mPrefix));
             }
 
