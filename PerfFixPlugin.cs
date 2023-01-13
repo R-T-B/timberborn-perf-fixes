@@ -128,7 +128,7 @@ namespace Frog
         //     The status is now only updated if the NavMesh change was close enough to the planter to possibly
         //     cause changes. Any changes further away than the `_navigationDistance.ResourceBuildings` limit
         //     can't possibly cause changes the list of nearby tiles, so they're ignored.  It is also updated on 
-        //     a random 30 frame timer to ensure it starts properly.
+        //     a random 60 frame timer to ensure it never waits too long.
         // ========================================================================================================
         public static bool PlanterBuildingStatusUpdaterOnNavMeshUpdated(Timberborn.Planting.PlanterBuildingStatusUpdater __instance, Timberborn.Navigation.NavMeshUpdate navMeshUpdate)
         {
@@ -139,14 +139,14 @@ namespace Frog
             bool relevantChangeFound = false;
             foreach (var changeLoc in navMeshUpdate.TerrainCoordinates)
             {
-                if ((Vector3.Distance(changeLoc, startPos) < distLimit) || (UnityEngine.Random.Range(0, 30) == 1))
+                if (Vector3.Distance(changeLoc, startPos) < distLimit)
                 {
                     relevantChangeFound = true;
                     break;
                 }
             }
 
-            if (relevantChangeFound)
+            if ((relevantChangeFound) || (UnityEngine.Random.Range(0, 60) == 1))
             {
                 __instance._shouldUpdateStatus = true;
                 __instance._shouldUpdateRange = true;
