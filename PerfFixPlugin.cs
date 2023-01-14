@@ -266,7 +266,7 @@ namespace Frog
             __result = new Timberborn.Population.BedData(numberOfFullBeds, numberOfFreeBeds, numberOfHomeless);
             return false;
         }
-        public static bool PopulationDataCollectEmploymentMetrics(int numberOfAdults, int numberOfBots, IEnumerable<Timberborn.WorkSystem.Workplace> workplaces, Timberborn.WorkerTypesUI.WorkerTypeHelper ____workerTypeHelper, ref (Timberborn.Population.WorkplaceData beaverWorkplaceData, Timberborn.Population.WorkplaceData golemWorkplaceData) __result)
+        public static bool PopulationDataCollectEmploymentMetrics(int numberOfAdults, int numberOfBots, IEnumerable<Timberborn.WorkSystem.Workplace> workplaces, Timberborn.WorkerTypesUI.WorkerTypeHelper ____workerTypeHelper, ref (Timberborn.Population.WorkplaceData beaverWorkplaceData, Timberborn.Population.WorkplaceData botWorkplaceData) __result)
         {
             if (!perfFixEnabled) { return true; }
             if (!popFixEnabled) { return true; }
@@ -357,7 +357,7 @@ namespace Frog
 
             {
                 var mOriginal = AccessTools.Method(typeof(Timberborn.Population.PopulationDataCalculator), "CollectEmploymentMetrics");
-                var mPrefix = SymbolExtensions.GetMethodInfo((int numberOfAdults, int numberOfBots, IEnumerable<Timberborn.WorkSystem.Workplace> workplaces, Timberborn.WorkerTypesUI.WorkerTypeHelper ____workerTypeHelper, (Timberborn.Population.WorkplaceData beaverWorkplaceData, Timberborn.Population.WorkplaceData golemWorkplaceData) __result) =>
+                var mPrefix = SymbolExtensions.GetMethodInfo((int numberOfAdults, int numberOfBots, IEnumerable<Timberborn.WorkSystem.Workplace> workplaces, Timberborn.WorkerTypesUI.WorkerTypeHelper ____workerTypeHelper, (Timberborn.Population.WorkplaceData beaverWorkplaceData, Timberborn.Population.WorkplaceData botWorkplaceData) __result) =>
                     PerfFixPlugin.PopulationDataCollectEmploymentMetrics(numberOfAdults, numberOfBots, workplaces, ____workerTypeHelper, ref __result));
                 PerfFixPlugin.instance.harmony.Patch(mOriginal, new HarmonyMethod(mPrefix));
             }
